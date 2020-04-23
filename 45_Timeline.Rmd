@@ -1,28 +1,206 @@
 ---
-title: "45_Timeline"
+title: "Lest We Forget"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup, include=F}
+library(rvest)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(ggplot2)
+library(ggthemes)
+library(plotly)
+```
+```{r abstract, echo=FALSE, warning=FALSE,fig.width=10, fig.height=5, fig.align='center'}
+monthStart <- function(x) {
+  x <- as.POSIXlt(x)
+  x$mday <- 1
+  as.Date(x)
+}
+
+HTMLRead <- read_html("https://www.mcsweeneys.net/articles/the-complete-listing-so-far-atrocities-1-546")
+
+key1 <- html_nodes(HTMLRead, "ol li")
+key2 <- list(NULL)
+for(i in 1:length(key1)){
+  key2[[i]] <- paste(xml_attrs(xml_child(key1[[i]]))[1])
+}
+key3 <- as.data.frame(cbind(key2))
+
+           
+text1 <- HTMLRead %>% 
+  html_nodes("ol li") %>%
+  html_text() %>%
+  as.data.frame()
+
+text2 <- separate(text1, col = .,sep=" – ", into=c("Delete1", "Date","Text"),extra = "merge")
+text2$Date <- as.Date(text2$Date, format = "%B %d, %Y")
+
+data1 <- cbind(key3, text2)
+
+data2 <- subset(data1,!is.na(Date))
+for (i in 1:nrow(data2)){
+data2$Category[i] <- if (grepl("red",data2$key2[i])){"Sexual Misconduct"} else
+                  if (grepl("lightblue",data2$key2[i])){"Public Statements"} else
+                  if (grepl("yellow",data2$key2[i])){"Collusion or Obstruction of Justice"} else
+                  if (grepl("darkpurple",data2$key2[i])){"Staff or Administration"} else
+                  if (grepl("pink",data2$key2[i])){"Family Business"} else
+                  if (grepl("orange",data2$key2[i])){"Policy"} else
+                  if (grepl("green",data2$key2[i])){"Environment"} else {"White Supremacy"}
+}
+#data1_111 <- data2[,-(1:2)]
+#data112_196 <- data2[,-(1:2)]
+#data197_290 <- data2[,-(1:2)]
+data3 <- data2[,-(1:2)]
+data3 <- data3[complete.cases(data3),]
+data3$Age <- as.numeric(max(data3$Date)-data3$Date)
+
+data4 <- list(NULL)
+for (i in 1:nrow(data3)){
+data4[[i]] <- data.frame(EventDate = rep(data3$Date[i],data3$Age[i]),
+                Date = rep(data3$Date[i],data3$Age[i]) + 0:(data3$Age[i]-1),
+                Text = rep(data3$Text[i],data3$Age[i]),
+                Category = rep(data3$Category[i], data3$Age[i]))
+}
+data5 <- do.call("rbind",data4)
+
+data5$Month <- monthStart(data5$Date)
+data6 <- data5
+data7 <- data6[!duplicated(data6[,c("Text", "Month")]),]
+data7$Event <- gsub('(.{1,90})(\\s|$)', '\\1\n',data7$Text)
+
+p <- ggplot(data7) + 
+  geom_bar(aes(x=Month,
+               group=Event,
+               fill = Category,
+               label= EventDate),
+           width = 25) + 
+  ggtitle("A Cumulative Timeline of President Trump's Actions against the United States") +
+  theme_solarized() +
+  xlab(NULL)
+
+ggplotly(p, dynamicTicks = T, tooltip = c("label", "Event")) %>%
+  rangeslider()
+
+rm(list = ls())
 ```
 
-## R Markdown
+## Goals and Inspiration
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+A [Reddit post](https://old.reddit.com/r/TooAfraidToAsk/comments/g5e0a9/is_trump_really_as_bad_as_reddit_and_other_left/) in April 2020 asked a question that strikes at the tricky issue of justifying a serious critique of the 45th President of the United States. 
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+Is Trump *really* as bad as Left wing news sources make him out to be? 
 
-```{r cars}
-summary(cars)
+For many, the answer seems to burst forth from a very emotional or single-issue platform. I found that I couldn't answer the question in a way that I would respect if I heard it in opposition.
+
+Luckily, there are many journalists who have devoted untold amounts of time to creating the kind of factual backdrop that would allow one to refresh themselves on how their emotional positions came to be. For this project, to begin with, I pulled exclusively from the amazing work of Ben Parker, Stephanie Steinbrecher and Kelsey Ronan at [McSweeney's](https://www.mcsweeneys.net). In preperation for the 2018 Midterms, they compiled a [list](https://www.mcsweeneys.net/articles/the-complete-listing-so-far-atrocities-1-546) of every factual event that they felt constituted a breach of the acceptable bounds of Presidential behaviour. While the piece is partisan, I was impressed with the dry cut presentations of these trangressions - it did not feel liberal to point out that in 2011, Donald Trump told Bill O'Reilly that President Obama did not have a birth certificate. And so in great categorical detail, these journalists listed 546 similar points of fact categorized by general domains.
+
+I was incredibly impressed with the impact of this list, but felt it could be added by a graphical display. This page is an attempt to parse the list and repackage it into said display.
+
+## Web Scraping
+
+To accomplish the task in R, the following packages were required.
+```{r library}
+library(rvest)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(ggplot2)
+library(ggthemes)
+library(plotly)
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
+The following code pulls the key factors from the article:
+  * The description of the image of the colored dot representing the category of the list item
+  * The text of the list item
+    + The date of the list item, which is pulled out from the text
+Due to inconsistencies in the formatting of the web page, there are some list items that are not formated with the identical hyphens that are required by my parsing method. As a result, these items must be dropped, which is accomplished by retaining only items that returned a proper Date value. As a result, we sadly lose 40 list items. 506 remain. 
+```{r parse items, warning=F}
+HTMLRead <- read_html("https://www.mcsweeneys.net/articles/the-complete-listing-so-far-atrocities-1-546")
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+key1 <- html_nodes(HTMLRead, "ol li")
+key2 <- list(NULL)
+for(i in 1:length(key1)){
+  key2[[i]] <- paste(xml_attrs(xml_child(key1[[i]]))[1])
+}
+key3 <- as.data.frame(cbind(key2))
+
+           
+text1 <- HTMLRead %>% 
+  html_nodes("ol li") %>%
+  html_text() %>%
+  as.data.frame()
+
+text2 <- separate(text1, col = .,sep=" – ", into=c("Delete1", "Date","Text"),extra = "merge")
+text2$Date <- as.Date(text2$Date, format = "%B %d, %Y")
+
+data1 <- cbind(key3, text2)
+
+data2 <- subset(data1,!is.na(Date))
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+We now conditionally transform the image files representing the category indicators into factors that describe each list item, and then retain list items where the process was succesful, bringing the total count down to 503.  
+
+```{r categories}
+for (i in 1:nrow(data2)){
+data2$Category[i] <- if (grepl("red",data2$key2[i])){"Sexual Misconduct"} else
+                  if (grepl("lightblue",data2$key2[i])){"Public Statements"} else
+                  if (grepl("yellow",data2$key2[i])){"Collusion or Obstruction of Justice"} else
+                  if (grepl("darkpurple",data2$key2[i])){"Staff or Administration"} else
+                  if (grepl("pink",data2$key2[i])){"Family Business"} else
+                  if (grepl("orange",data2$key2[i])){"Policy"} else
+                  if (grepl("green",data2$key2[i])){"Environment"} else{"White Supremacy"}
+}
+
+data3 <- data2[,-(1:2)]
+data3 <- data3[complete.cases(data3),]
+```
+
+## Preparing Data for Graphing
+
+There are 2820 days between the first and last list item. To summarize for easier presentation, I want to reduce the number of points by reducing all dates to be simply the first day of the month-year they are in. Additionally, I would like to add some line breaks to the text, so that they will be readable on a single chart.
+
+```{r graphprepare}
+data3$Age <- as.numeric(max(data3$Date)-data3$Date)
+data4 <- list(NULL)
+for (i in 1:nrow(data3)){
+data4[[i]] <- data.frame(EventDate = rep(data3$Date[i],data3$Age[i]),
+                Date = rep(data3$Date[i],data3$Age[i]) + 0:(data3$Age[i]-1),
+                Text = rep(data3$Text[i],data3$Age[i]),
+                Category = rep(data3$Category[i], data3$Age[i]))
+}
+data5 <- do.call("rbind",data4)
+
+monthStart <- function(x) {
+  x <- as.POSIXlt(x)
+  x$mday <- 1
+  as.Date(x)
+}
+
+data5$Month <- monthStart(data5$Date)
+data6 <- data5
+data7 <- data6[!duplicated(data6[,c("Text", "Month")]),]
+data7$Event <- gsub('(.{1,90})(\\s|$)', '\\1\n',data7$Text)
+```
+
+And... Voila!
+
+```{r graph, echo=FALSE, warning=FALSE, fig.width=10, fig.height=5, fig.align='center'}
+p <- ggplot(data7) + 
+  geom_bar(aes(x=Month,
+               group=Event,
+               fill = Category,
+               label= EventDate),
+           width = 25) + 
+  ggtitle("A Cumulative Timeline of President Trump's Actions against the United States") +
+  theme_solarized() +
+  xlab(NULL)
+
+ggplotly(p, dynamicTicks = T, tooltip = c("label", "Event")) %>%
+  rangeslider()
+```
+
+I aim to include data from additional sources soon. The list grows.
