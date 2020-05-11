@@ -54,34 +54,21 @@ data2$Category[i] <- if (grepl("red",data2$key2[i])){"Sexual Misconduct"} else
 #data197_290 <- data2[,-(1:2)]
 data3 <- data2[,-(1:2)]
 data3 <- data3[complete.cases(data3),]
-data3$Age <- as.numeric(max(data3$Date)-data3$Date)
+data3$Month <- monthStart(data3$Date)
+data3 <- data3[!duplicated(data3[,c("Text", "Month")]),]
+data3$Event <- gsub('(.{1,90})(\\s|$)', '\\1\n',data3$Text)
 
-data4 <- list(NULL)
-for (i in 1:nrow(data3)){
-data4[[i]] <- data.frame(EventDate = rep(data3$Date[i],data3$Age[i]),
-                Date = rep(data3$Date[i],data3$Age[i]) + 0:(data3$Age[i]-1),
-                Text = rep(data3$Text[i],data3$Age[i]),
-                Category = rep(data3$Category[i], data3$Age[i]))
-}
-data5 <- do.call("rbind",data4)
-
-data5$Month <- monthStart(data5$Date)
-data6 <- data5
-data7 <- data6[!duplicated(data6[,c("Text", "Month")]),]
-data7$Event <- gsub('(.{1,90})(\\s|$)', '\\1\n',data7$Text)
-
-p <- ggplot(data7) + 
+p <- ggplot(data3) + 
   geom_bar(aes(x=Month,
-               group=Event,
+               group= Text,
                fill = Category,
-               label= EventDate),
+               label= Event),
            width = 25) + 
-  ggtitle("A Cumulative Timeline of President Trump's Actions against the United States") +
+  ggtitle("A Timeline of President Trump's Actions against the United States") +
   theme_solarized() +
   xlab(NULL)
 
-ggplotly(p, dynamicTicks = T, tooltip = c("label", "Event")) %>%
-  rangeslider()
+ggplotly(p, dynamicTicks = F, tooltip = c("Date", "label"))
 
 rm(list = ls())
 ```
@@ -113,9 +100,9 @@ library(plotly)
 
 
 The following code pulls the key factors from the article:
-  * The description of the image of the colored dot representing the category of the list item
-  * The text of the list item
-    + The date of the list item, which is pulled out from the text
+    * The description of the image of the colored dot representing the category of the list item
+    * The text of the list item
+        + The date of the list item, which is pulled out from the text
 Due to inconsistencies in the formatting of the web page, there are some list items that are not formated with the identical hyphens that are required by my parsing method. As a result, these items must be dropped, which is accomplished by retaining only items that returned a proper Date value. As a result, we sadly lose 40 list items. 506 remain. 
 ```{r parse items, warning=F}
 HTMLRead <- read_html("https://www.mcsweeneys.net/articles/the-complete-listing-so-far-atrocities-1-546")
@@ -164,43 +151,31 @@ data3 <- data3[complete.cases(data3),]
 There are 2820 days between the first and last list item. To summarize for easier presentation, I want to reduce the number of points by reducing all dates to be simply the first day of the month-year they are in. Additionally, I would like to add some line breaks to the text, so that they will be readable on a single chart.
 
 ```{r graphprepare}
-data3$Age <- as.numeric(max(data3$Date)-data3$Date)
-data4 <- list(NULL)
-for (i in 1:nrow(data3)){
-data4[[i]] <- data.frame(EventDate = rep(data3$Date[i],data3$Age[i]),
-                Date = rep(data3$Date[i],data3$Age[i]) + 0:(data3$Age[i]-1),
-                Text = rep(data3$Text[i],data3$Age[i]),
-                Category = rep(data3$Category[i], data3$Age[i]))
-}
-data5 <- do.call("rbind",data4)
-
 monthStart <- function(x) {
   x <- as.POSIXlt(x)
   x$mday <- 1
   as.Date(x)
 }
 
-data5$Month <- monthStart(data5$Date)
-data6 <- data5
-data7 <- data6[!duplicated(data6[,c("Text", "Month")]),]
-data7$Event <- gsub('(.{1,90})(\\s|$)', '\\1\n',data7$Text)
+data3$Month <- monthStart(data3$Date)
+data3 <- data3[!duplicated(data3[,c("Text", "Month")]),]
+data3$Event <- gsub('(.{1,90})(\\s|$)', '\\1\n',data3$Text)
 ```
 
-And... Voila!
+And... Voila! Making use of Plotly's amazing graphics features, the following plot is highly interactive. By hovering over the plot, details about the event are highlighted. Addtionally, double clicking on a category isolates that category within the timeline.
 
 ```{r graph, echo=FALSE, warning=FALSE, fig.width=10, fig.height=5, fig.align='center'}
-p <- ggplot(data7) + 
+p <- ggplot(data3) + 
   geom_bar(aes(x=Month,
-               group=Event,
+               group= Text,
                fill = Category,
-               label= EventDate),
+               label= Event),
            width = 25) + 
-  ggtitle("A Cumulative Timeline of President Trump's Actions against the United States") +
+  ggtitle("A Timeline of President Trump's Actions against the United States") +
   theme_solarized() +
   xlab(NULL)
 
-ggplotly(p, dynamicTicks = T, tooltip = c("label", "Event")) %>%
-  rangeslider()
+ggplotly(p, dynamicTicks = F, tooltip = c("Date", "label"))
 ```
 
 I aim to include data from additional sources soon. The list grows.
